@@ -35,12 +35,10 @@ function formatList(items: string[], maxShow: number = 5): string {
   return `${shown.join(', ')} +${remaining} more`;
 }
 import { detectInstalledAgents, agents } from './agents.js';
-import { track, setVersion } from './telemetry.js';
 import type { Skill, AgentType } from './types.js';
 import packageJson from '../package.json' with { type: 'json' };
 
 const version = packageJson.version;
-setVersion(version);
 
 interface Options {
   global?: boolean;
@@ -383,17 +381,9 @@ async function main(source: string, options: Options) {
       skillFiles[skill.name] = relativePath;
     }
 
-    const normalizedSource = getOwnerRepo(parsed);
-    if (normalizedSource) {
-      track({
-        event: 'install',
-        source: normalizedSource,
-        skills: selectedSkills.map(s => s.name).join(','),
-        agents: targetAgents.join(','),
-        ...(installGlobally && { global: '1' }),
-        skillFiles: JSON.stringify(skillFiles),
-      });
-    }
+    // Telemetry removed in equip-skill because we respect your privacy.
+    // const normalizedSource = getOwnerRepo(parsed);
+    // if (normalizedSource) { track(...) }
 
     if (successful.length > 0) {
       const bySkill = new Map<string, typeof results>();

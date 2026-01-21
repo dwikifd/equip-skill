@@ -1,6 +1,6 @@
 {
   "name": "equip-skill",
-  "version": "1.0.23",
+  "version": "1.0.24",
   "description": "Install agent skills onto coding agents (OpenCode, Claude Code, Codex, Cursor)",
   "type": "module",
   "bin": {
