@@ -3,11 +3,25 @@
 import { program } from 'commander';
 import * as p from '@clack/prompts';
 import chalk from 'chalk';
-import { parseSource, getOwnerRepo } from './source-parser.js';
+import { parseSource } from './source-parser.js';
 import { cloneRepo, cleanupTempDir } from './git.js';
 import { discoverSkills, getSkillDisplayName } from './skills.js';
-import { installSkillForAgent, isSkillInstalled, getCanonicalPath, getInstallPath } from './installer.js';
+import { installSkillForAgent, isSkillInstalled, getCanonicalPath } from './installer.js';
 import { homedir } from 'os';
+import { detectInstalledAgents, agents } from './agents.js';
+import type { Skill, AgentType, ParsedSource } from './types.js';
+import packageJson from '../package.json' with { type: 'json' };
+
+const version = packageJson.version;
+
+interface Options {
+  global?: boolean;
+  agent?: string[];
+  yes?: boolean;
+  skill?: string[];
+  list?: boolean;
+  all?: boolean;
+}
 
 /**
  * Shortens a path for display: replaces homedir with ~ and cwd with .
@@ -34,28 +48,14 @@ function formatList(items: string[], maxShow: number = 5): string {
   const remaining = items.length - maxShow;
   return `${shown.join(', ')} +${remaining} more`;
 }
-import { detectInstalledAgents, agents } from './agents.js';
-import type { Skill, AgentType } from './types.js';
-import packageJson from '../package.json' with { type: 'json' };
-
-const version = packageJson.version;
-
-interface Options {
-  global?: boolean;
-  agent?: string[];
-  yes?: boolean;
-  skill?: string[];
-  list?: boolean;
-  all?: boolean;
-}
 
 program
   .name('equip-skill')
-  .description('Install skills onto coding agents (OpenCode, Claude Code, Codex, Kiro CLI, Cursor, Antigravity, Github Copilot, Roo Code)')
+  .description('Install skills onto coding agents')
   .version(version)
   .argument('<source>', 'Git repo URL, GitHub shorthand (owner/repo), local path (./path), or direct path to skill')
   .option('-g, --global', 'Install skill globally (user-level) instead of project-level')
-  .option('-a, --agent <agents...>', 'Specify agents to install to (opencode, claude-code, codex, kiro-cli, cursor, antigravity, github-copilot, roo)')
+  .option('-a, --agent <agents...>', 'Specify agents to install to')
   .option('-s, --skill <skills...>', 'Specify skill names to install (skip selection prompt)')
   .option('-l, --list', 'List available skills in the repository without installing')
   .option('-y, --yes', 'Skip confirmation prompts')
@@ -85,33 +85,21 @@ program
 
 program.parse();
 
-async function main(source: string, options: Options) {
-    if (options.all) {
-    options.yes = true;
-    options.global = true;
-  }
-
-  console.log();
-  p.intro(chalk.bgCyan.black(' skills '));
-
-  let tempDir: string | null = null;
-
-  try {
+async function prepareSource(source: string): Promise<{ skillsDir: string, tempDir: string | null, parsed: ParsedSource }> {
     const spinner = p.spinner();
-
     spinner.start('Parsing source...');
     const parsed = parseSource(source);
     spinner.stop(`Source: ${chalk.cyan(parsed.type === 'local' ? parsed.localPath! : parsed.url)}${parsed.ref ? ` @ ${chalk.yellow(parsed.ref)}` : ''}${parsed.subpath ? ` (${parsed.subpath})` : ''}`);
 
     let skillsDir: string;
+    let tempDir: string | null = null;
 
     if (parsed.type === 'local') {
       spinner.start('Validating local path...');
       const { existsSync } = await import('fs');
       if (!existsSync(parsed.localPath!)) {
         spinner.stop(chalk.red('Path not found'));
-        p.outro(chalk.red(`Local path does not exist: ${parsed.localPath}`));
-        process.exit(1);
+        throw new Error(`Local path does not exist: ${parsed.localPath}`);
       }
       skillsDir = parsed.localPath!;
       spinner.stop('Local path validated');
@@ -122,35 +110,12 @@ async function main(source: string, options: Options) {
       spinner.stop('Repository cloned');
     }
 
-    spinner.start('Discovering skills...');
-    const skills = await discoverSkills(skillsDir, parsed.subpath);
+    return { skillsDir, tempDir, parsed };
+}
 
-    if (skills.length === 0) {
-      spinner.stop(chalk.red('No skills found'));
-      p.outro(chalk.red('No valid skills found. Skills require a SKILL.md with name and description.'));
-      await cleanup(tempDir);
-      process.exit(1);
-    }
-
-    spinner.stop(`Found ${chalk.green(skills.length)} skill${skills.length > 1 ? 's' : ''}`);
-
-    if (options.list) {
-      console.log();
-      p.log.step(chalk.bold('Available Skills'));
-      for (const skill of skills) {
-        p.log.message(`  ${chalk.cyan(getSkillDisplayName(skill))}`);
-        p.log.message(`    ${chalk.dim(skill.description)}`);
-      }
-      console.log();
-      p.outro('Use --skill <name> to install specific skills');
-      await cleanup(tempDir);
-      process.exit(0);
-    }
-
-    let selectedSkills: Skill[];
-
+async function selectSkills(skills: Skill[], options: Options): Promise<Skill[]> {
     if (options.skill && options.skill.length > 0) {
-      selectedSkills = skills.filter(s =>
+      const selectedSkills = skills.filter(s =>
         options.skill!.some(name =>
           s.name.toLowerCase() === name.toLowerCase() ||
           getSkillDisplayName(s).toLowerCase() === name.toLowerCase()
@@ -163,42 +128,45 @@ async function main(source: string, options: Options) {
         for (const s of skills) {
           p.log.message(`  - ${getSkillDisplayName(s)}`);
         }
-        await cleanup(tempDir);
-        process.exit(1);
+        throw new Error('No matching skills found');
       }
 
       p.log.info(`Selected ${selectedSkills.length} skill${selectedSkills.length !== 1 ? 's' : ''}: ${selectedSkills.map(s => chalk.cyan(getSkillDisplayName(s))).join(', ')}`);
-    } else if (skills.length === 1) {
-      selectedSkills = skills;
+      return selectedSkills;
+    }
+
+    if (skills.length === 1) {
       const firstSkill = skills[0]!;
       p.log.info(`Skill: ${chalk.cyan(getSkillDisplayName(firstSkill))}`);
       p.log.message(chalk.dim(firstSkill.description));
-    } else if (options.yes) {
-      selectedSkills = skills;
+      return skills;
+    }
+
+    if (options.yes) {
       p.log.info(`Installing all ${skills.length} skills`);
-    } else {
-      const skillChoices = skills.map(s => ({
+      return skills;
+    }
+
+    const skillChoices = skills.map(s => ({
         value: s,
         label: getSkillDisplayName(s),
         hint: s.description.length > 60 ? s.description.slice(0, 57) + '...' : s.description,
-      }));
+    }));
 
-      const selected = await p.multiselect({
+    const selected = await p.multiselect({
         message: 'Select skills to install',
         options: skillChoices,
         required: true,
-      });
+    });
 
-      if (p.isCancel(selected)) {
-        p.cancel('Installation cancelled');
-        await cleanup(tempDir);
-        process.exit(0);
-      }
-
-      selectedSkills = selected as Skill[];
+    if (p.isCancel(selected)) {
+        throw new Error('Installation cancelled');
     }
 
-    let targetAgents: AgentType[];
+    return selected as Skill[];
+}
+
+async function selectAgents(options: Options): Promise<AgentType[]> {
     const validAgents = Object.keys(agents);
 
     if (options.agent && options.agent.length > 0) {
@@ -207,101 +175,90 @@ async function main(source: string, options: Options) {
       if (invalidAgents.length > 0) {
         p.log.error(`Invalid agents: ${invalidAgents.join(', ')}`);
         p.log.info(`Valid agents: ${validAgents.join(', ')}`);
-        await cleanup(tempDir);
-        process.exit(1);
+        throw new Error('Invalid agents specified');
       }
 
-      targetAgents = options.agent as AgentType[];
-    } else if (options.all) {
-      targetAgents = validAgents as AgentType[];
-      p.log.info(`Installing to all ${targetAgents.length} agents`);
-    } else {
-      spinner.start('Detecting installed agents...');
-      const installedAgents = await detectInstalledAgents();
-      spinner.stop(`Detected ${installedAgents.length} agent${installedAgents.length !== 1 ? 's' : ''}`);
+      return options.agent as AgentType[];
+    }
 
-      if (installedAgents.length === 0) {
+    if (options.all) {
+      const allAgents = validAgents as AgentType[];
+      p.log.info(`Installing to all ${allAgents.length} agents`);
+      return allAgents;
+    }
+
+    const spinner = p.spinner();
+    spinner.start('Detecting installed agents...');
+    const installedAgents = await detectInstalledAgents();
+    spinner.stop(`Detected ${installedAgents.length} agent${installedAgents.length !== 1 ? 's' : ''}`);
+
+    if (installedAgents.length === 0) {
         if (options.yes) {
-          targetAgents = validAgents as AgentType[];
           p.log.info('Installing to all agents (none detected)');
-        } else {
-          p.log.warn('No coding agents detected. You can still install skills.');
+          return validAgents as AgentType[];
+        }
 
-          const allAgentChoices = Object.entries(agents).map(([key, config]) => ({
+        p.log.warn('No coding agents detected. You can still install skills.');
+
+        const allAgentChoices = Object.entries(agents).map(([key, config]) => ({
             value: key as AgentType,
             label: config.displayName,
-          }));
+        }));
 
-          const selected = await p.multiselect({
+        const selected = await p.multiselect({
             message: 'Select agents to install skills to',
             options: allAgentChoices,
             required: true,
             initialValues: Object.keys(agents) as AgentType[],
-          });
+        });
 
-          if (p.isCancel(selected)) {
-            p.cancel('Installation cancelled');
-            await cleanup(tempDir);
-            process.exit(0);
-          }
-
-          targetAgents = selected as AgentType[];
+        if (p.isCancel(selected)) {
+            throw new Error('Installation cancelled');
         }
-      } else if (installedAgents.length === 1 || options.yes) {
-        targetAgents = installedAgents;
+
+        return selected as AgentType[];
+    }
+
+    if (installedAgents.length === 1 || options.yes) {
         if (installedAgents.length === 1) {
           const firstAgent = installedAgents[0]!;
           p.log.info(`Installing to: ${chalk.cyan(agents[firstAgent].displayName)}`);
         } else {
           p.log.info(`Installing to: ${installedAgents.map(a => chalk.cyan(agents[a].displayName)).join(', ')}`);
         }
-      } else {
-        const agentChoices = installedAgents.map(a => ({
-          value: a,
-          label: agents[a].displayName,
-          hint: `${options.global ? agents[a].globalSkillsDir : agents[a].skillsDir}`,
-        }));
-
-        const selected = await p.multiselect({
-          message: 'Select agents to install skills to',
-          options: agentChoices,
-          required: true,
-          initialValues: installedAgents,
-        });
-
-        if (p.isCancel(selected)) {
-          p.cancel('Installation cancelled');
-          await cleanup(tempDir);
-          process.exit(0);
-        }
-
-        targetAgents = selected as AgentType[];
-      }
+        return installedAgents;
     }
 
-    let installGlobally = options.global ?? false;
+    const agentChoices = installedAgents.map(a => ({
+        value: a,
+        label: agents[a].displayName,
+        hint: `${options.global ? agents[a].globalSkillsDir : agents[a].skillsDir}`,
+    }));
 
-    if (options.global === undefined && !options.yes) {
-      const scope = await p.select({
-        message: 'Installation scope',
-        options: [
-          { value: false, label: 'Project', hint: 'Install in current directory (committed with your project)' },
-          { value: true, label: 'Global', hint: 'Install in home directory (available across all projects)' },
-        ],
-      });
+    const selected = await p.multiselect({
+        message: 'Select agents to install skills to',
+        options: agentChoices,
+        required: true,
+        initialValues: installedAgents,
+    });
 
-      if (p.isCancel(scope)) {
-        p.cancel('Installation cancelled');
-        await cleanup(tempDir);
-        process.exit(0);
-      }
-
-      installGlobally = scope as boolean;
+    if (p.isCancel(selected)) {
+        throw new Error('Installation cancelled');
     }
 
+    return selected as AgentType[];
+}
+
+async function confirmInstallation(
+    selectedSkills: Skill[],
+    targetAgents: AgentType[],
+    installGlobally: boolean,
+    options: Options
+): Promise<void> {
     const cwd = process.cwd();
     const summaryLines: string[] = [];
     const overwriteStatus = new Map<string, Map<string, boolean>>();
+
     for (const skill of selectedSkills) {
       const agentStatus = new Map<string, boolean>();
       for (const agent of targetAgents) {
@@ -311,9 +268,6 @@ async function main(source: string, options: Options) {
     }
     
     const agentNames = targetAgents.map(a => agents[a].displayName);
-    const hasOverwrites = Array.from(overwriteStatus.values()).some(
-      agentMap => Array.from(agentMap.values()).some(v => v)
-    );
     
     for (const skill of selectedSkills) {
       if (summaryLines.length > 0) summaryLines.push('');
@@ -341,12 +295,18 @@ async function main(source: string, options: Options) {
       const confirmed = await p.confirm({ message: 'Proceed with installation?' });
 
       if (p.isCancel(confirmed) || !confirmed) {
-        p.cancel('Installation cancelled');
-        await cleanup(tempDir);
-        process.exit(0);
+        throw new Error('Installation cancelled');
       }
     }
+}
 
+async function performInstallation(
+    selectedSkills: Skill[],
+    targetAgents: AgentType[],
+    installGlobally: boolean,
+    tempDir: string | null
+): Promise<void> {
+    const spinner = p.spinner();
     spinner.start('Installing skills...');
 
     const results: { skill: string; agent: string; success: boolean; path: string; canonicalPath?: string; symlinkFailed?: boolean; error?: string }[] = [];
@@ -364,93 +324,147 @@ async function main(source: string, options: Options) {
 
     spinner.stop('Installation complete');
 
-    console.log();
     const successful = results.filter(r => r.success);
     const failed = results.filter(r => !r.success);
 
-    const skillFiles: Record<string, string> = {};
-    for (const skill of selectedSkills) {
-      let relativePath: string;
-      if (tempDir && skill.path === tempDir) {
-        relativePath = 'SKILL.md';
-      } else if (tempDir && skill.path.startsWith(tempDir + '/')) {
-        relativePath = skill.path.slice(tempDir.length + 1) + '/SKILL.md';
-      } else {
-        continue;
-      }
-      skillFiles[skill.name] = relativePath;
-    }
-
-    // Telemetry removed in equip-skill because we respect your privacy.
-    // const normalizedSource = getOwnerRepo(parsed);
-    // if (normalizedSource) { track(...) }
-
     if (successful.length > 0) {
-      const bySkill = new Map<string, typeof results>();
-      for (const r of successful) {
-        const skillResults = bySkill.get(r.skill) || [];
-        skillResults.push(r);
-        bySkill.set(r.skill, skillResults);
-      }
-      
-      const skillCount = bySkill.size;
-      const agentCount = new Set(successful.map(r => r.agent)).size;
-      const symlinkFailures = successful.filter(r => r.symlinkFailed);
-      const copiedAgents = symlinkFailures.map(r => r.agent);
-      const resultLines: string[] = [];
-      
-      for (const [, skillResults] of bySkill) {
-        const firstResult = skillResults[0]!;
-        if (firstResult.canonicalPath) {
-          const shortPath = shortenPath(firstResult.canonicalPath, cwd);
-          resultLines.push(`${chalk.green('✓')} ${shortPath}`);
-        }
-        const symlinked = skillResults.filter(r => !r.symlinkFailed).map(r => r.agent);
-        const copied = skillResults.filter(r => r.symlinkFailed).map(r => r.agent);
-        
-        if (symlinked.length > 0) {
-          resultLines.push(`  ${chalk.dim('→')} ${formatList(symlinked)}`);
-        }
-        if (copied.length > 0) {
-          resultLines.push(`  ${chalk.yellow('copied →')} ${formatList(copied)}`);
-        }
-      }
-      
-      const title = chalk.green(`Installed ${skillCount} skill${skillCount !== 1 ? 's' : ''} to ${agentCount} agent${agentCount !== 1 ? 's' : ''}`);
-      p.note(resultLines.join('\n'), title);
-      
-      // Show symlink failure warning
-      if (symlinkFailures.length > 0) {
-        p.log.warn(chalk.yellow(`Symlinks failed for: ${formatList(copiedAgents)}`));
-        p.log.message(chalk.dim('  Files were copied instead. On Windows, enable Developer Mode for symlink support.'));
-      }
+      printSuccessReport(successful, tempDir);
     }
 
     if (failed.length > 0) {
-      console.log();
-      p.log.error(chalk.red(`Failed to install ${failed.length}`));
-      for (const r of failed) {
-        p.log.message(`  ${chalk.red('✗')} ${r.skill} → ${r.agent}: ${chalk.dim(r.error)}`);
-      }
+      printFailureReport(failed);
     }
+}
+
+function printSuccessReport(successful: any[], tempDir: string | null) {
+    const cwd = process.cwd();
+    const bySkill = new Map<string, any[]>();
+    for (const r of successful) {
+        const skillResults = bySkill.get(r.skill) || [];
+        skillResults.push(r);
+        bySkill.set(r.skill, skillResults);
+    }
+
+    const skillCount = bySkill.size;
+    const agentCount = new Set(successful.map(r => r.agent)).size;
+    const symlinkFailures = successful.filter(r => r.symlinkFailed);
+    const copiedAgents = symlinkFailures.map(r => r.agent);
+    const resultLines: string[] = [];
+
+    for (const [, skillResults] of bySkill) {
+        const firstResult = skillResults[0]!;
+        if (firstResult.canonicalPath) {
+        const shortPath = shortenPath(firstResult.canonicalPath, cwd);
+        resultLines.push(`${chalk.green('✓')} ${shortPath}`);
+        }
+        const symlinked = skillResults.filter((r: any) => !r.symlinkFailed).map((r: any) => r.agent);
+        const copied = skillResults.filter((r: any) => r.symlinkFailed).map((r: any) => r.agent);
+        
+        if (symlinked.length > 0) {
+        resultLines.push(`  ${chalk.dim('→')} ${formatList(symlinked)}`);
+        }
+        if (copied.length > 0) {
+        resultLines.push(`  ${chalk.yellow('copied →')} ${formatList(copied)}`);
+        }
+    }
+
+    const title = chalk.green(`Installed ${skillCount} skill${skillCount !== 1 ? 's' : ''} to ${agentCount} agent${agentCount !== 1 ? 's' : ''}`);
+    p.note(resultLines.join('\n'), title);
+
+    // Show symlink failure warning
+    if (symlinkFailures.length > 0) {
+        p.log.warn(chalk.yellow(`Symlinks failed for: ${formatList(copiedAgents)}`));
+        p.log.message(chalk.dim('  Files were copied instead. On Windows, enable Developer Mode for symlink support.'));
+    }
+}
+
+function printFailureReport(failed: any[]) {
+    console.log();
+    p.log.error(chalk.red(`Failed to install ${failed.length}`));
+    for (const r of failed) {
+        p.log.message(`  ${chalk.red('✗')} ${r.skill} → ${r.agent}: ${chalk.dim(r.error)}`);
+    }
+}
+
+async function main(source: string, options: Options) {
+  if (options.all) {
+    options.yes = true;
+    options.global = true;
+  }
+
+  console.log();
+  p.intro(chalk.bgCyan.black(' skills '));
+
+  let tempDir: string | null = null;
+
+  try {
+    const { skillsDir, tempDir: tDir, parsed } = await prepareSource(source);
+    tempDir = tDir;
+
+    const spinner = p.spinner();
+    spinner.start('Discovering skills...');
+    const skills = await discoverSkills(skillsDir, parsed.subpath);
+
+    if (skills.length === 0) {
+      spinner.stop(chalk.red('No skills found'));
+      throw new Error('No valid skills found. Skills require a SKILL.md with name and description.');
+    }
+
+    spinner.stop(`Found ${chalk.green(skills.length)} skill${skills.length > 1 ? 's' : ''}`);
+
+    if (options.list) {
+      console.log();
+      p.log.step(chalk.bold('Available Skills'));
+      for (const skill of skills) {
+        p.log.message(`  ${chalk.cyan(getSkillDisplayName(skill))}`);
+        p.log.message(`    ${chalk.dim(skill.description)}`);
+      }
+      console.log();
+      p.outro('Use --skill <name> to install specific skills');
+      return;
+    }
+
+    const selectedSkills = await selectSkills(skills, options);
+    const targetAgents = await selectAgents(options);
+
+    let installGlobally = options.global ?? false;
+
+    if (options.global === undefined && !options.yes) {
+      const scope = await p.select({
+        message: 'Installation scope',
+        options: [
+          { value: false, label: 'Project', hint: 'Install in current directory (committed with your project)' },
+          { value: true, label: 'Global', hint: 'Install in home directory (available across all projects)' },
+        ],
+      });
+
+      if (p.isCancel(scope)) {
+        throw new Error('Installation cancelled');
+      }
+
+      installGlobally = scope as boolean;
+    }
+
+    await confirmInstallation(selectedSkills, targetAgents, installGlobally, options);
+    await performInstallation(selectedSkills, targetAgents, installGlobally, tempDir);
 
     console.log();
     p.outro(chalk.green('Done!'));
   } catch (error) {
-    p.log.error(error instanceof Error ? error.message : 'Unknown error occurred');
-    p.outro(chalk.red('Installation failed'));
+    if ((error as Error).message === 'Installation cancelled') {
+        p.cancel('Installation cancelled');
+    } else {
+        p.log.error(error instanceof Error ? error.message : 'Unknown error occurred');
+        p.outro(chalk.red('Installation failed'));
+    }
     process.exit(1);
   } finally {
-    await cleanup(tempDir);
-  }
-}
-
-async function cleanup(tempDir: string | null) {
-  if (tempDir) {
-    try {
-      await cleanupTempDir(tempDir);
-    } catch {
-      // Ignore cleanup errors
+    if (tempDir) {
+        try {
+            await cleanupTempDir(tempDir);
+        } catch {
+            // Ignore cleanup errors
+        }
     }
   }
 }
