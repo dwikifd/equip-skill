@@ -1,15 +1,19 @@
-# add-skill
+# equip-skill
 
-Install agent skills onto your coding agents from any git repository.
+> A fork of [vercel-labs/add-skill](https://github.com/vercel-labs/add-skill) designed for direct, clean skill installation.
+
+Install agent skills directly to your project without intermediate caches or symlinks. Perfect for single-agent workflows like **Antigravity**.
 
 <!-- agent-list:start -->
-Supports **Opencode**, **Claude Code**, **Codex**, **Cursor**, and [12 more](#available-agents).
+
+Supports **Antigravity**, **Opencode**, **Claude Code**, **Codex**, **Cursor**, and [12 more](#available-agents).
+
 <!-- agent-list:end -->
 
 ## Quick Start
 
 ```bash
-npx add-skill vercel-labs/agent-skills
+npx equip-skill vercel-labs/agent-skills
 ```
 
 ## What are Agent Skills?
@@ -17,6 +21,7 @@ npx add-skill vercel-labs/agent-skills
 Agent skills are reusable instruction sets that extend your coding agent's capabilities. They're defined in `SKILL.md` files with YAML frontmatter containing a `name` and `description`.
 
 Skills let agents perform specialized tasks like:
+
 - Generating release notes from git history
 - Creating PRs following your team's conventions
 - Integrating with external tools (Linear, Notion, etc.)
@@ -29,50 +34,50 @@ The `<source>` argument accepts multiple formats:
 
 ```bash
 # GitHub shorthand
-npx add-skill vercel-labs/agent-skills
+npx equip-skill vercel-labs/agent-skills
 
 # Full GitHub URL
-npx add-skill https://github.com/vercel-labs/agent-skills
+npx equip-skill https://github.com/vercel-labs/agent-skills
 
 # Direct path to a skill in a repo
-npx add-skill https://github.com/vercel-labs/agent-skills/tree/main/skills/frontend-design
+npx equip-skill https://github.com/vercel-labs/agent-skills/tree/main/skills/frontend-design
 
 # GitLab URL
-npx add-skill https://gitlab.com/org/repo
+npx equip-skill https://gitlab.com/org/repo
 
 # Any git URL
-npx add-skill git@github.com:vercel-labs/agent-skills.git
+npx equip-skill git@github.com:vercel-labs/agent-skills.git
 ```
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `-g, --global` | Install to user directory instead of project |
+| Option                    | Description                                                                                                                                        |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-g, --global`            | Install to user directory instead of project                                                                                                       |
 | `-a, --agent <agents...>` | <!-- agent-names:start -->Target specific agents (e.g., `claude-code`, `codex`). See [Available Agents](#available-agents)<!-- agent-names:end --> |
-| `-s, --skill <skills...>` | Install specific skills by name |
-| `-l, --list` | List available skills without installing |
-| `-y, --yes` | Skip all confirmation prompts |
-| `-V, --version` | Show version number |
-| `-h, --help` | Show help |
+| `-s, --skill <skills...>` | Install specific skills by name                                                                                                                    |
+| `-l, --list`              | List available skills without installing                                                                                                           |
+| `-y, --yes`               | Skip all confirmation prompts                                                                                                                      |
+| `-V, --version`           | Show version number                                                                                                                                |
+| `-h, --help`              | Show help                                                                                                                                          |
 
 ### Examples
 
 ```bash
 # List skills in a repository
-npx add-skill vercel-labs/agent-skills --list
+npx equip-skill vercel-labs/agent-skills --list
 
 # Install multiple specific skills
-npx add-skill vercel-labs/agent-skills --skill frontend-design --skill skill-creator
+npx equip-skill vercel-labs/agent-skills --skill frontend-design --skill skill-creator
 
 # Install to specific agents
-npx add-skill vercel-labs/agent-skills -a claude-code -a opencode
+npx equip-skill vercel-labs/agent-skills -a claude-code -a opencode
 
 # Non-interactive installation (CI/CD friendly)
-npx add-skill vercel-labs/agent-skills --skill frontend-design -g -a claude-code -y
+npx equip-skill vercel-labs/agent-skills --skill frontend-design -g -a claude-code -y
 
 # Install all skills from a repo
-npx add-skill vercel-labs/agent-skills -y -g
+npx equip-skill vercel-labs/agent-skills -y -g
 ```
 
 ## Available Agents
@@ -80,33 +85,34 @@ npx add-skill vercel-labs/agent-skills -y -g
 Skills can be installed to any of these supported agents. Use `-g, --global` to install to the global path instead of project-level.
 
 <!-- available-agents:start -->
-| Agent | `--agent` | Project Path | Global Path |
-|-------|-----------|--------------|-------------|
-| Amp | `amp` | `.agents/skills/` | `~/.config/agents/skills/` |
-| Antigravity | `antigravity` | `.agent/skills/` | `~/.gemini/antigravity/skills/` |
-| Claude Code | `claude-code` | `.claude/skills/` | `~/.claude/skills/` |
-| Clawdbot | `clawdbot` | `skills/` | `~/.clawdbot/skills/` |
-| Codex | `codex` | `.codex/skills/` | `~/.codex/skills/` |
-| Cursor | `cursor` | `.cursor/skills/` | `~/.cursor/skills/` |
-| Droid | `droid` | `.factory/skills/` | `~/.factory/skills/` |
-| Gemini CLI | `gemini-cli` | `.gemini/skills/` | `~/.gemini/skills/` |
-| GitHub Copilot | `github-copilot` | `.github/skills/` | `~/.copilot/skills/` |
-| Goose | `goose` | `.goose/skills/` | `~/.config/goose/skills/` |
-| Kilo Code | `kilo` | `.kilocode/skills/` | `~/.kilocode/skills/` |
-| Kiro CLI | `kiro-cli` | `.kiro/skills/` | `~/.kiro/skills/` |
-| OpenCode | `opencode` | `.opencode/skills/` | `~/.config/opencode/skills/` |
-| Roo Code | `roo` | `.roo/skills/` | `~/.roo/skills/` |
-| Trae | `trae` | `.trae/skills/` | `~/.trae/skills/` |
-| Windsurf | `windsurf` | `.windsurf/skills/` | `~/.codeium/windsurf/skills/` |
+
+| Agent          | `--agent`        | Project Path        | Global Path                     |
+| -------------- | ---------------- | ------------------- | ------------------------------- |
+| Amp            | `amp`            | `.agents/skills/`   | `~/.config/agents/skills/`      |
+| Antigravity    | `antigravity`    | `.agent/skills/`    | `~/.gemini/antigravity/skills/` |
+| Claude Code    | `claude-code`    | `.claude/skills/`   | `~/.claude/skills/`             |
+| Clawdbot       | `clawdbot`       | `skills/`           | `~/.clawdbot/skills/`           |
+| Codex          | `codex`          | `.codex/skills/`    | `~/.codex/skills/`              |
+| Cursor         | `cursor`         | `.cursor/skills/`   | `~/.cursor/skills/`             |
+| Droid          | `droid`          | `.factory/skills/`  | `~/.factory/skills/`            |
+| Gemini CLI     | `gemini-cli`     | `.gemini/skills/`   | `~/.gemini/skills/`             |
+| GitHub Copilot | `github-copilot` | `.github/skills/`   | `~/.copilot/skills/`            |
+| Goose          | `goose`          | `.goose/skills/`    | `~/.config/goose/skills/`       |
+| Kilo Code      | `kilo`           | `.kilocode/skills/` | `~/.kilocode/skills/`           |
+| Kiro CLI       | `kiro-cli`       | `.kiro/skills/`     | `~/.kiro/skills/`               |
+| OpenCode       | `opencode`       | `.opencode/skills/` | `~/.config/opencode/skills/`    |
+| Roo Code       | `roo`            | `.roo/skills/`      | `~/.roo/skills/`                |
+| Trae           | `trae`           | `.trae/skills/`     | `~/.trae/skills/`               |
+| Windsurf       | `windsurf`       | `.windsurf/skills/` | `~/.codeium/windsurf/skills/`   |
+
 <!-- available-agents:end -->
 
 > [!NOTE]
 > **Kiro CLI users:** After installing skills, you need to manually add them to your custom agent's `resources` in `.kiro/agents/<agent>.json`:
+>
 > ```json
 > {
->   "resources": [
->     "skill://.kiro/skills/**/SKILL.md"
->   ]
+>   "resources": ["skill://.kiro/skills/**/SKILL.md"]
 > }
 > ```
 
@@ -148,6 +154,7 @@ Describe the scenarios where this skill should be used.
 The CLI searches for skills in these locations within a repository:
 
 <!-- skill-discovery:start -->
+
 - Root directory (if it contains `SKILL.md`)
 - `skills/`
 - `skills/.curated/`
@@ -177,12 +184,12 @@ If no skills are found in standard locations, a recursive search is performed.
 
 Skills are generally compatible across agents since they follow a shared [Agent Skills specification](https://agentskills.io). However, some features may be agent-specific:
 
-| Feature | OpenCode | Claude Code | Codex | Kiro CLI | Cursor | Antigravity | Roo Code | Github Copilot | Amp | Clawdbot |
-|---------|----------|-------------|-------|----------|--------|-------------|----------|----------------|-----|----------|
-| Basic skills | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| `allowed-tools` | Yes | Yes | Yes | No | Yes | Yes | Yes | Yes | Yes | Yes |
-| `context: fork` | No | Yes | No | No | No | No | No | No | No | No |
-| Hooks | No | Yes | No | No | No | No | No | No | No | No |
+| Feature         | OpenCode | Claude Code | Codex | Kiro CLI | Cursor | Antigravity | Roo Code | Github Copilot | Amp | Clawdbot |
+| --------------- | -------- | ----------- | ----- | -------- | ------ | ----------- | -------- | -------------- | --- | -------- |
+| Basic skills    | Yes      | Yes         | Yes   | Yes      | Yes    | Yes         | Yes      | Yes            | Yes | Yes      |
+| `allowed-tools` | Yes      | Yes         | Yes   | No       | Yes    | Yes         | Yes      | Yes            | Yes | Yes      |
+| `context: fork` | No       | Yes         | No    | No       | No     | No          | No       | No             | No  | No       |
+| Hooks           | No       | Yes         | No    | No       | No     | No          | No       | No             | No  | No       |
 
 ## Troubleshooting
 
@@ -207,9 +214,9 @@ This CLI collects anonymous usage data to help improve the tool. No personal inf
 To disable telemetry, set either of these environment variables:
 
 ```bash
-DISABLE_TELEMETRY=1 npx add-skill vercel-labs/agent-skills
+DISABLE_TELEMETRY=1 npx equip-skill vercel-labs/agent-skills
 # or
-DO_NOT_TRACK=1 npx add-skill vercel-labs/agent-skills
+DO_NOT_TRACK=1 npx equip-skill vercel-labs/agent-skills
 ```
 
 Telemetry is also automatically disabled in CI environments.
