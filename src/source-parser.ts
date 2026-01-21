@@ -2,24 +2,6 @@ import { isAbsolute, resolve } from 'path';
 import type { ParsedSource } from './types.js';
 
 /**
- * Extract owner/repo from a parsed source for telemetry.
- * Returns null for local paths or unparseable sources.
- */
-export function getOwnerRepo(parsed: ParsedSource): string | null {
-    if (parsed.type === 'local') {
-        return null;
-    }
-
-    // Extract from git URL: https://github.com/owner/repo.git or similar
-    const match = parsed.url.match(/(?:github|gitlab)\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/);
-    if (match) {
-        return `${match[1]}/${match[2]}`;
-    }
-
-    return null;
-}
-
-/**
  * Check if a string represents a local file system path
  */
 function isLocalPath(input: string): boolean {

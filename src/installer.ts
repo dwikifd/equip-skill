@@ -151,6 +151,9 @@ const isExcluded = (name: string): boolean => {
   return false;
 };
 
+/**
+ * Recursively copies a directory, skipping symlinks for security.
+ */
 async function copyDirectory(src: string, dest: string): Promise<void> {
   await mkdir(dest, { recursive: true });
 
@@ -163,6 +166,11 @@ async function copyDirectory(src: string, dest: string): Promise<void> {
 
     const srcPath = join(src, entry.name);
     const destPath = join(dest, entry.name);
+
+    if (entry.isSymbolicLink()) {
+      // Skip symlinks to prevent potential security issues (e.g. links to /etc/passwd)
+      continue;
+    }
 
     if (entry.isDirectory()) {
       await copyDirectory(srcPath, destPath);

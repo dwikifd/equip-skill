@@ -11,7 +11,7 @@
  */
 
 import assert from 'node:assert';
-import { parseSource, getOwnerRepo } from '../src/source-parser.js';
+import { parseSource } from '../src/source-parser.js';
 
 let passed = 0;
 let failed = 0;
@@ -148,67 +148,6 @@ test('Git URL - custom host', () => {
   assert.strictEqual(result.url, 'https://git.example.com/owner/repo.git');
 });
 
-// getOwnerRepo tests - for telemetry normalization
-test('getOwnerRepo - GitHub URL', () => {
-  const parsed = parseSource('https://github.com/owner/repo');
-  assert.strictEqual(getOwnerRepo(parsed), 'owner/repo');
-});
-
-test('getOwnerRepo - GitHub URL with .git', () => {
-  const parsed = parseSource('https://github.com/owner/repo.git');
-  assert.strictEqual(getOwnerRepo(parsed), 'owner/repo');
-});
-
-test('getOwnerRepo - GitHub URL with tree/branch/path', () => {
-  const parsed = parseSource('https://github.com/owner/repo/tree/main/skills/my-skill');
-  assert.strictEqual(getOwnerRepo(parsed), 'owner/repo');
-});
-
-test('getOwnerRepo - GitHub shorthand', () => {
-  const parsed = parseSource('owner/repo');
-  assert.strictEqual(getOwnerRepo(parsed), 'owner/repo');
-});
-
-test('getOwnerRepo - GitHub shorthand with subpath', () => {
-  const parsed = parseSource('owner/repo/skills/my-skill');
-  assert.strictEqual(getOwnerRepo(parsed), 'owner/repo');
-});
-
-test('getOwnerRepo - GitLab URL', () => {
-  const parsed = parseSource('https://gitlab.com/owner/repo');
-  assert.strictEqual(getOwnerRepo(parsed), 'owner/repo');
-});
-
-test('getOwnerRepo - GitLab URL with tree', () => {
-  const parsed = parseSource('https://gitlab.com/owner/repo/-/tree/main/skills');
-  assert.strictEqual(getOwnerRepo(parsed), 'owner/repo');
-});
-
-test('getOwnerRepo - local path returns null', () => {
-  const parsed = parseSource('./my-skills');
-  assert.strictEqual(getOwnerRepo(parsed), null);
-});
-
-test('getOwnerRepo - absolute local path returns null', () => {
-  const parsed = parseSource('/home/user/skills');
-  assert.strictEqual(getOwnerRepo(parsed), null);
-});
-
-test('getOwnerRepo - custom git host returns null', () => {
-  const parsed = parseSource('https://git.example.com/owner/repo.git');
-  assert.strictEqual(getOwnerRepo(parsed), null);
-});
-
-test('getOwnerRepo - SSH format returns null', () => {
-  const parsed = parseSource('git@github.com:owner/repo.git');
-  assert.strictEqual(getOwnerRepo(parsed), null);
-});
-
-test('getOwnerRepo - private GitLab instance returns null', () => {
-  // This falls through to 'git' type since it's not gitlab.com
-  const parsed = parseSource('https://gitlab.company.com/team/repo');
-  assert.strictEqual(getOwnerRepo(parsed), null);
-});
 
 // Summary
 console.log(`\n${passed} passed, ${failed} failed`);
